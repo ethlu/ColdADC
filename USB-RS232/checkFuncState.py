@@ -1,0 +1,51 @@
+#!/usr/bin/env python
+
+import time
+import serial
+
+ser=serial.Serial(
+    port='/dev/ttyUSB0',
+    baudrate=9600,
+    parity=serial.PARITY_NONE,
+    stopbits=serial.STOPBITS_TWO,
+    bytesize=serial.EIGHTBITS,
+    timeout=1
+    )
+
+
+#ser.write('KEYS?\n')
+ser.write('OUTE?\n')
+time.sleep(0.5)
+x=ser.readline()
+print ""
+if int(x) == 0:
+    print "Function generator output is off\n"
+if int(x) == 1:
+    print "Function generator output is on\n"
+
+ser.write('FUNC?\n')
+time.sleep(0.5)
+y=ser.readline()
+ser.write('FREQ?\n')
+time.sleep(0.5)
+z=ser.readline()
+ser.write('AMPL?VP\n')
+time.sleep(0.5)
+d=ser.readline()
+ser.write('OFFS?\n')
+time.sleep(0.5)
+k=ser.readline()
+
+if int(y) == 0:
+    print "Sine wave frequency (Hz) = ",z
+if int(y) == 1:
+    print "Square wave frequency (Hz) = ",z
+if int(y) > 1:
+    print "ERROR: check output wave form !!!!"
+
+
+print "Vp-p (V) = ",d
+print "Offset (V) = ",k
+    
+
+    
