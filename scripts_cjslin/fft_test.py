@@ -48,7 +48,7 @@ def FindAliasedHarmonicsTest():
         print('Returned:',AliasedHarms)
         print('Expected:',AliasedHarmsExpected)
         
-def AnalyzeDynamicADC(Codes,N=4096,SamplingRate=1):
+def AnalyzeDynamicADC(Codes,N=4096,SamplingRate=1, window = None):
     """ 
     Analyses ADC output codes to calculate performance parameters.
     Inputs :
@@ -57,6 +57,7 @@ def AnalyzeDynamicADC(Codes,N=4096,SamplingRate=1):
         N -- length of FFT (should be power of two)
         SamplingRate -- can be provided to scale to frequency axis if desired
                     must be in MHz
+        window -- an array of N, or None if no windowing
     Outputs:
         SNDR -- signal-to-noise plus distortion ratio
         ENOB -- Effective Number of Bits
@@ -71,20 +72,31 @@ def AnalyzeDynamicADC(Codes,N=4096,SamplingRate=1):
     Author: Carl Grace (crgrace@lbl.gov)
     """
     CodeArray = np.array(Codes)
+    if window is not None:
+        CodeArray = CodeArray * window 
     CodeArray = (CodeArray-N/2)/N  # normalize array    
+    
     X = np.abs(np.fft.fft(CodeArray)/(N/2))
     X = X[0:int(N/2)] # drop redundant half
     X_db = 20*np.log10(np.abs(X)) # want to plot in log scale
-
+    #print(X[19:24])
 
     # calculate SNDR
     # SNDR is (input tone power) / (sum of all other bins)
-    X_sndr = X # make copy for calculations
-    InputBin = np.argmax(X_sndr)  # where is the input tone
-    InputPower = 20*np.log10(X_sndr[InputBin])
-    X_sndr[InputBin] = 0.0
+    X_sndr = np.copy(X) # make copy for calculations
     X_sndr[0] = 0.0
-    NoisePower = 10*np.log10(np.sum(X_sndr**2))
+    if window is not None:
+        X_sndr[1] = 0.0 #probably need this when windowing
+    InputBin = np.argmax(X_sndr)  # where is the input tone
+    if window is None:
+        leakage_bins = 20
+        leakage_power = np.sum(X_sndr[max(0,InputBin-leakage_bins):InputBin+leakage_bins]**2)
+        InputPower = 10*np.log10(leakage_power)
+        NoisePower = 10*np.log10(np.sum(X_sndr**2)-leakage_power)
+    else:
+        InputPower = 20*np.log10(X_sndr[InputBin])
+        NoisePower = 10*np.log10(np.sum(X_sndr**2) - X_sndr[InputBin]**2)
+    X_sndr[InputBin] = 0.0
     SNDR = InputPower - NoisePower
 
     # calculate ENOB
@@ -117,7 +129,10 @@ def AnalyzeDynamicADC(Codes,N=4096,SamplingRate=1):
         xLabelText = r'Normalized Frequency [$\Omega$]'
     xFraction = 0.5 # how far along x-axis to put text
     FontSize = 10
-    plt.plot(Freqs[1:Freqs.size],X_db[1:X_db.size]) # no DC component    
+    if window is not None:
+        plt.plot(Freqs[2:Freqs.size],X_db[2:X_db.size]) # no DC component    
+    else:
+        plt.plot(Freqs[1:Freqs.size],X_db[1:X_db.size]) # no DC component    
     plt.xlabel(xLabelText)
     plt.text(xFraction*max(Freqs),max(X_db)-20,'Bins = %d' %(N), fontsize = FontSize)
     plt.text(xFraction*max(Freqs),max(X_db)-30,
@@ -129,8 +144,23 @@ def AnalyzeDynamicADC(Codes,N=4096,SamplingRate=1):
     plt.text(xFraction*max(Freqs),max(X_db)-60,
          'THD = %.2f dB' %(THD), fontsize = FontSize)
     plt.ylabel('Amplitude [dBFS]')
-    plt.savefig('adc_dynamic_performace.png',format='png',dpi=300)
-    return SNDR, ENOB, SFDR, THD
+    """
+    fig = plt.figure()
+    x0 = np.arange(0, 2048)*1./2E6 
+    plt.title("Input codes (after windowing)")
+    plt.xlabel("time (s)")
+    plt.scatter(x0, CodeArray)
+
+    fig = plt.figure()
+    x0 = np.arange(0, 1024)
+    plt.title("fft values")
+    plt.xlabel("freq (Mhz)")
+    plt.scatter(Freqs, X_db)
+
+    plt.show()
+    """
+    #plt.savefig('adc_dynamic_performace.png',format='png',dpi=300)
+    return SNDR, ENOB, SFDR, THD, plt
    
 
 
@@ -145,7 +175,7 @@ def AnalyzeDynamicADCTest(inputData):
 
     ## Single Channel
     Fs = 2.0;  # sampling rate
-    Cycles = 23 # number of cycles in record
+    Cycles = 21 # number of cycles in record
     NumSamples = 2048
 
     

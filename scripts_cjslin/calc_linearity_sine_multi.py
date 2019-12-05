@@ -39,11 +39,13 @@ def process(inFile, plot_save_dir=None):
 
     # find histrogram
     h,binedges = np.histogram(Codes12,bins)
+
+    h_lowerbound = 10
     i = 1
-    while h[i] < 10 or h[i] < h[i+1]:
+    while h[i] < h_lowerbound or h[i] < h[i+1]:
         i+=1
     j = -1
-    while h[j] < 10 or h[j] < h[j-1]:
+    while h[j] < h_lowerbound or h[j] < h[j-1]:
         j-=1
 
     # cumulative historgram
@@ -138,50 +140,70 @@ def process(inFile, plot_save_dir=None):
      
 
 def process_multi(inDir):
-    output = open("linearity_analysis.csv", "a+")
-    writer = csv.writer(output)
-    writer.writerow([inDir, "dnl_mins", "dnl_maxs", "inl_mins", "inl_maxs", "inl_mean", EXTREMA])
-
-    for buff in ["SE-", "SDC-"]:
-        for mux in ["SHA-", "FrozenSHA-"]:
-            for adc in ["ADC0_", "ADC1_"]:
-                for v in ["v1.txt", "v2.txt"]:
-                    inFile = "Sinusoid_20Khz_"+buff+mux+adc+"NomVREFPN_2M_"+v
-                    writer.writerow([inFile] + process(inDir+inFile))
-
-    output.close()
-
+    for root, dirs, files in os.walk(inDir):
+        if not files or files[0].find("Sinusoid") == -1:
+            continue
+        output = open("linearity_analysis.csv", "a+")
+        writer = csv.writer(output)
+        writer.writerow([root, "dnl_mins", "dnl_maxs", "inl_mins", "inl_maxs", "inl_mean", EXTREMA])
+        for inFile in files:
+            if inFile[-3:]!="txt":
+                continue
+            writer.writerow([inFile] + process(root +'/'+ inFile))
+        output.close()
+        
 def process_graph_multi(inDir):
     """ Saves the graphs of linearity of the sample files in 'inDir' into 'graph_dir'. """
-    for buff in ["SE-", "SDC-"]:
-        for mux in ["SHA-", "FrozenSHA-"]:
-            for adc in ["ADC0_", "ADC1_"]:
-                for v in ["v1.txt", "v2.txt"]:
-                    inFile = "Sinusoid_20Khz_"+buff+mux+adc+"NomVREFPN_2M_"+v
-                    graph_dir = "lin_graphs"+inDir[inDir.find("/"):]
-                    try:
-                        os.mkdir(graph_dir)
-                    except Exception:
-                        pass
-                    process(inDir+inFile, graph_dir)
+    for root, dirs, files in os.walk(inDir):
+        graph_dir = "lin_graphs"+root[len(inDir):]+"/"
+        try:
+            os.mkdir(graph_dir)
+        except Exception:
+            pass
+        if not files or files[0].find("Sinusoid") == -1:
+            continue
+        for inFile in files:
+            if inFile[-3:]!="txt":
+                continue
+            process(root+ '/' + inFile, graph_dir)
 
 def parser(linearity_file):
+    int_parser = lambda s: (int(s[0:2]), 2) if len(s)>1 and s[1].isdigit() else (int(s[0]), 1)
     with open(linearity_file, 'r') as f:
         reader = csv.reader(f)
         parsed = [["Channel", "SDC/SE", "Frozen/SHA","dnl_min", "dnl_max", "inl_min", "inl_max", "inl_mean"]]
         for r in reader:
             r_p = []
             if r[1] == "dnl_mins":
-                channels = int(r[0][r[0].find("ch")+2])
+                path = r[0]
+                ch_i = path.find("ch")+2
+                ch, i = int_parser(path[ch_i:])
+                adc0ch, adc1ch = None, None
+                if ch < 8:
+                    adc0ch = ch
+                else:
+                    adc1ch = ch
+                if len(path) > (ch_i+i) and path[ch_i+i] == "_":
+                    ch, i = int_parser(path[ch_i+i+1:])
+                    if ch < 8:
+                        adc0ch = ch
+                    else:
+                        adc1ch = ch
                 no_cal = "NoCal" in r[0]
             else:
                 if no_cal:
                     continue
                 header = r[0]
                 if "ADC0" in header:
-                    r_p.append(channels)
+                    if adc0ch is not None:
+                        r_p.append(adc0ch)
+                    else:
+                        continue
                 else:
-                    r_p.append(channels+8)
+                    if adc1ch is not None:
+                        r_p.append(adc1ch)
+                    else:
+                        continue
                 if "SDC" in header:
                     r_p.append("SDC")
                 else:
@@ -192,40 +214,102 @@ def parser(linearity_file):
                     r_p.append("SHA")
                 for i in range(1,5):
                     extremas = [float(s) for s in r[i][1:-1].split(',')]
-                    r_p.append(extremas[0])
+                    r_p.append(extremas[0]) #which EXTREMA value to use
                 r_p.append(float(r[5]))
                 parsed.append(r_p)
 
-    """
     with open("linearity_parsed.csv", "w+") as f:
         writer=csv.writer(f)
         writer.writerows(parsed)
-    """
     return parsed
 
-def grapher(parsed):
-    sorted_r = sorted(parsed[1:], key=lambda x: x[0:3])
-    avgs = [[] for _ in range(16)]
-    ch, sha = 0, "FrozenSHA"
+def all_stats(parsed, per_channel):
+    if per_channel:
+        sorted_r = sorted(parsed[1:], key=lambda x: x[0:3])
+        ch, sha = 0, "FrozenSHA"
+    else:
+        sorted_r = sorted(parsed[1:], key=lambda x: x[1:3])
+        ch, sha = None, "FrozenSHA"
+
+    avgs = [[]]
     samples = []
     for r in sorted_r:
         if r[2] != sha:
             sha = r[2]
             samples = [list(s) for s in zip(*samples)]
-            avgs[ch].append([statistics.mean(s) for s in samples])
+            avgs[-1].append([statistics.mean(s) for s in samples])
             samples = []
-        if r[0] != ch:
+        if ch is not None and r[0]!= ch:
             ch = r[0]
+            avgs.append([])
         samples.append(r[3:7])
     samples = [list(s) for s in zip(*samples)]
-    avgs[ch].append([statistics.mean(s) for s in samples])
+    avgs[-1].append([statistics.mean(s) for s in samples])
 
+    """ need to deal with missing channels when it happens
     for i in range(16):
         if not avgs[i]:
             avgs[i] = [[0,0,0,0] for _ in range(4)]
+    """
+    avgs = np.array(avgs).transpose(1,2,0)
+    return [avgs, ["SDC-FrozenSHA", "SDC-SHA", "SE-FrozenSHA", "SE-SHA"]]
 
-    avgs = np.array(avgs).transpose(1,0,2)
+def SDC_stats(parsed, per_channel):
+    if per_channel:
+        sorted_r = sorted(parsed[1:], key=lambda x: x[0:2])
+        ch, sdc = 0, "SDC"
+    else:
+        sorted_r = sorted(parsed[1:], key=lambda x: x[1])
+        ch, sdc = None, "SDC"
+    avgs = [[]]
+    samples = []
+    for r in sorted_r:
+        if r[1] != sdc:
+            sdc = r[1]
+            samples = [list(s) for s in zip(*samples)]
+            avgs[-1].append([statistics.mean(s) for s in samples])
+            samples = []
+        if ch is not None and r[0]!= ch:
+            ch = r[0]
+            avgs.append([])
+        samples.append(r[3:7])
+    samples = [list(s) for s in zip(*samples)]
+    avgs[-1].append([statistics.mean(s) for s in samples])
 
+    avgs = np.array(avgs).transpose(1,2,0)
+    return [avgs, ["SDC", "SE"]]
+
+def SHA_stats(parsed, per_channel):
+    if per_channel:
+        sorted_r = sorted(parsed[1:], key=lambda x: (x[0], x[2]))
+        ch, sha = 0, "FrozenSHA"
+    else:
+        sorted_r = sorted(parsed[1:], key=lambda x: x[2])
+        ch, sha = None, "FrozenSHA"
+    avgs = [[]]
+    samples = []
+    for r in sorted_r:
+        if r[2] != sha:
+            sha = r[2]
+            samples = [list(s) for s in zip(*samples)]
+            avgs[-1].append([statistics.mean(s) for s in samples])
+            samples = []
+        if ch is not None and r[0]!= ch:
+            ch = r[0]
+            avgs.append([])
+        samples.append(r[3:7])
+    samples = [list(s) for s in zip(*samples)]
+    avgs[-1].append([statistics.mean(s) for s in samples])
+
+    avgs = np.array(avgs).transpose(1,2,0)
+    return [avgs, ["FrozenSHA", "SHA"]]
+
+def grapher(data, labels, per_channel):
+    """Makes DNL, INL extrema bar graphs. (should edit titles and axis labels as appropriate)
+        data is a nested list where first axis denotes series corresponding to the labels, i.e. configurations like SDC
+        second axis denotes dnl/inl/ min/maxes (dnl first)
+        third axis contains the values for each x-axis (e.g. channel) bin"""
+        
     def autolabel(rects):
         """Attach a text label above each bar in *rects*, displaying its height."""
         for rect in rects:
@@ -236,60 +320,69 @@ def grapher(parsed):
                         size=6,
                         textcoords="offset points",
                         ha='center', va='bottom')
-
-    x = np.arange(16)
-    width = 0.2
-
-    fig, ax = plt.subplots()
-    ax.set_ylabel('(Averaged) Extrema DNL (12 bit)')
-    ax.set_xlabel('Channel')
-    ax.set_xticks(x)
-    ax.set_title('(Averaged) Extrema DNL (12 bit)')
-    autolabel(ax.bar(x-1.5*width, avgs[0][:,1], width, label='SDC-FrozenSHA'))
-    autolabel(ax.bar(x-.5*width, avgs[1][:,1], width, label='SDC-SHA'))
-    autolabel(ax.bar(x+.5*width, avgs[2][:,1], width, label='SE-FrozenSHA'))
-    autolabel(ax.bar(x+1.5*width, avgs[3][:,1], width, label='SE-SHA'))
-    autolabel(ax.bar(x-1.5*width, avgs[0][:,0], width, label='SDC-FrozenSHA'))
-    autolabel(ax.bar(x-.5*width, avgs[1][:,0], width, label='SDC-SHA'))
-    autolabel(ax.bar(x+.5*width, avgs[2][:,0], width, label='SE-FrozenSHA'))
-    autolabel(ax.bar(x+1.5*width, avgs[3][:,0], width, label='SE-SHA'))
-    ax.legend(bbox_to_anchor=(1.1, 1.05))
+    x = np.arange(len(data[0][0]))
+    width = 0.1
+    offset = len(labels)/2
 
     fig, ax = plt.subplots()
-    ax.set_ylabel('(Averaged) Extrema INL (12 bit)')
-    ax.set_xlabel('Channel')
-    ax.set_xticks(x)
-    ax.set_title('(Averaged) Extrema INL (12 bit)')
-    autolabel(ax.bar(x-1.5*width, avgs[0][:,3], width, label='SDC-FrozenSHA'))
-    autolabel(ax.bar(x-.5*width, avgs[1][:,3], width, label='SDC-SHA'))
-    autolabel(ax.bar(x+.5*width, avgs[2][:,3], width, label='SE-FrozenSHA'))
-    autolabel(ax.bar(x+1.5*width, avgs[3][:,3], width, label='SE-SHA'))
-    autolabel(ax.bar(x-1.5*width, avgs[0][:,2], width, label='SDC-FrozenSHA'))
-    autolabel(ax.bar(x-.5*width, avgs[1][:,2], width, label='SDC-SHA'))
-    autolabel(ax.bar(x+.5*width, avgs[2][:,2], width, label='SE-FrozenSHA'))
-    autolabel(ax.bar(x+1.5*width, avgs[3][:,2], width, label='SE-SHA'))
-    ax.legend(bbox_to_anchor=(1.1, 1.05))
+    title = '(Averaged) Extrema DNL (12 bit)'
+    ax.set_title(title)
+    ax.set_ylabel(title)
+    for i, lab in enumerate(labels):
+        autolabel(ax.bar(x+(i-offset)*width, data[i][1], width, label=lab))
+    for i, lab in enumerate(labels):
+        autolabel(ax.bar(x+(i-offset)*width, data[i][0], width, label=lab))
+    if per_channel:
+        ax.set_xlabel('Channel')
+        ax.set_xticks(x)
+        ax.legend(bbox_to_anchor=(1.1, 1.05))
+    else:
+        ax.set_xlabel('(Aggregated over all channels)')
+        #ax.set_xticks([])
+        plt.xticks(x, ["Warm", "Cold"])
+        ax.legend(bbox_to_anchor=(.9, .9))
+
+    fig, ax = plt.subplots()
+    title = '(Averaged) Extrema INL (12 bit)'
+    ax.set_title(title)
+    ax.set_ylabel(title)
+    for i, lab in enumerate(labels):
+        autolabel(ax.bar(x+(i-offset)*width, data[i][3], width, label=lab))
+    for i, lab in enumerate(labels):
+        autolabel(ax.bar(x+(i-offset)*width, data[i][2], width, label=lab))
+    if per_channel:
+        ax.set_xlabel('Channel')
+        ax.set_xticks(x)
+        ax.legend(bbox_to_anchor=(1.1, 1.05))
+    else:
+        ax.set_xlabel('(Aggregated over all channels)')
+        #ax.set_xticks([])
+        plt.xticks(x, ["Warm", "Cold"])
+        ax.legend(bbox_to_anchor=(.9, .9))
 
     plt.show()
 
-linearity_statistics = lambda lin_file: grapher(parser(lin_file))
+linearity_statistics = lambda lin_file, stats, per_channel: grapher(*(stats(parser(lin_file), per_channel)+[per_channel]))
 
-if __name__!="__main__":
-    BASE = "data_ethlu/"
-    for ch in range(0, 8):
-        inDir = BASE+"ch{}_{}/".format(ch, ch+8)
-        try:
-            process_graph_multi(inDir)
-        except Exception as e:
-            print("bad inDir", inDir)
-            print(e)
-        for inDir in os.scandir(inDir):
-            if inDir.is_dir():
-                try:
-                    process_graph_multi(inDir.path+'/')
-                except Exception:
-                    print("bad inDir", inDir.path)
+def compare(warm, cold, stats, per_channel):
+    warm_data, warm_label = stats(parser(warm), per_channel)
+    cold_data, cold_label = stats(parser(cold), per_channel)
+    if per_channel:
+        for i in range(len(warm_label)):
+            warm_label[i]+="_Warm"
+        for i in range(len(cold_label)):
+            cold_label[i]+="_Cold"
+        grapher(np.concatenate((warm_data, cold_data)), warm_label+cold_label, per_channel)
+    else:
+        combined = np.array([warm_data, cold_data]).transpose(1,2,0,3).squeeze()
+        grapher(combined, warm_label, per_channel)
+        
 
 
+#process_graph_multi("data_ethlu/cold")
 #print(process("data_ethlu/ch3_11/Sinusoid_20KHz_SE-SHA-ADC0_NomVREFPN_2M_v2.txt", "./"))
-linearity_statistics("data_ethlu/analysis/linearity_analysis_trunc_limit.csv")
+
+WARM = "data_ethlu/warm/analysis/linearity_analysis_trunc_limit.csv"
+COLD = "data_ethlu/cold/analysis/linearity_analysis.csv"
+#linearity_statistics(COLD, SHA_stats, False)
+compare(WARM, COLD, all_stats, True)
