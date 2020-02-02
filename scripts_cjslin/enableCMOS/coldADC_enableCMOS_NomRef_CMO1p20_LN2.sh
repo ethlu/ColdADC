@@ -6,12 +6,20 @@
 # Disable BJT and enable CMOS
 ./coldADC_writeCtrlReg.py 19 0b100
 
+## FOR Board # 1 with LDO at VDDA=2.50V
+## nominal CMOS references
+./coldADC_writeCtrlReg.py 24 0xd0
+./coldADC_writeCtrlReg.py 25 0x2f
+./coldADC_writeCtrlReg.py 26 0x7f
+./coldADC_writeCtrlReg.py 27 0x5f
+
+
 ## FOR VDDA=2.50V ; nominal CMOS references
 ## Keysight front panel reading is 2.53V
-./coldADC_writeCtrlReg.py 24 0xc8
-./coldADC_writeCtrlReg.py 25 0x2d
-./coldADC_writeCtrlReg.py 26 0x7b
-./coldADC_writeCtrlReg.py 27 0x5c
+#./coldADC_writeCtrlReg.py 24 0xc8
+#./coldADC_writeCtrlReg.py 25 0x2d
+#./coldADC_writeCtrlReg.py 26 0x7b
+#./coldADC_writeCtrlReg.py 27 0x5c
 
 
 ## FOR VDDA=2.35V ; nominal CMOS references

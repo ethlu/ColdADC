@@ -15,7 +15,7 @@ ser=serial.Serial(
 counter=0
 
 #while 1:
-ser.write('FREQ205078\n')
+ser.write('FREQ20507.8\n')
 
 
 
