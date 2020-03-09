@@ -88,9 +88,9 @@ def AnalyzeDynamicADC(Codes,N=4096,SamplingRate=1, window = None):
     if window is not None:
         X_sndr[1] = 0.0 #probably need this when windowing
     InputBin = np.argmax(X_sndr)  # where is the input tone
-    if window is None:
-        leakage_bins = 20
-        leakage_power = np.sum(X_sndr[max(0,InputBin-leakage_bins):InputBin+leakage_bins]**2)
+    if window is not None:
+        leakage_bins = 20 
+        leakage_power = np.sum(X_sndr[max(0,InputBin-leakage_bins):InputBin+leakage_bins+1]**2)
         InputPower = 10*np.log10(leakage_power)
         NoisePower = 10*np.log10(np.sum(X_sndr**2)-leakage_power)
     else:
@@ -141,8 +141,8 @@ def AnalyzeDynamicADC(Codes,N=4096,SamplingRate=1, window = None):
          'ENOB = %.2f bits' %(ENOB), fontsize = FontSize)
     plt.text(xFraction*max(Freqs),max(X_db)-50,
          'SFDR = %.2f dB' %(SFDR), fontsize = FontSize)
-    plt.text(xFraction*max(Freqs),max(X_db)-60,
-         'THD = %.2f dB' %(THD), fontsize = FontSize)
+    #plt.text(xFraction*max(Freqs),max(X_db)-60,
+         #'THD = %.2f dB' %(THD), fontsize = FontSize)
     plt.ylabel('Amplitude [dBFS]')
     """
     fig = plt.figure()

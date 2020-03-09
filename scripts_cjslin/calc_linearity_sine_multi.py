@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import math, statistics
 import sys, os
-import csv
+import csv, statistics, math
+from combined_analysis import all_stats, SDC_stats, SHA_stats, single_stats, all_stats_db, find_chs
 
 #the numbers of extreme values to average over and report, e.g. 5 means the average of 5 lowest/highest
 EXTREMA = [1, 5, 10] 
@@ -139,8 +139,17 @@ def process(inFile, plot_save_dir=None):
     return [dnl_min, dnl_max, inl_min, inl_max, inlMean]
      
 
-def process_multi(inDir):
+def process_multi(inDir, plot=True):
     for root, dirs, files in os.walk(inDir):
+        if "analysis" in root:
+            continue
+        graph_dir = None
+        if plot:
+            graph_dir = "lin_graphs"+root[len(inDir):]+"/"
+            try:
+                os.mkdir(graph_dir)
+            except Exception:
+                continue
         if not files or files[0].find("Sinusoid") == -1:
             continue
         output = open("linearity_analysis.csv", "a+")
@@ -149,50 +158,25 @@ def process_multi(inDir):
         for inFile in files:
             if inFile[-3:]!="txt":
                 continue
-            writer.writerow([inFile] + process(root +'/'+ inFile))
+            writer.writerow([inFile] + process(root +'/'+ inFile, graph_dir))
         output.close()
-        
-def process_graph_multi(inDir):
-    """ Saves the graphs of linearity of the sample files in 'inDir' into 'graph_dir'. """
-    for root, dirs, files in os.walk(inDir):
-        graph_dir = "lin_graphs"+root[len(inDir):]+"/"
-        try:
-            os.mkdir(graph_dir)
-        except Exception:
-            pass
-        if not files or files[0].find("Sinusoid") == -1:
-            continue
-        for inFile in files:
-            if inFile[-3:]!="txt":
-                continue
-            process(root+ '/' + inFile, graph_dir)
 
-def parser(linearity_file):
+def parser(linearity_file, extrema_i = 0, exam_no_cal = False):
     int_parser = lambda s: (int(s[0:2]), 2) if len(s)>1 and s[1].isdigit() else (int(s[0]), 1)
     with open(linearity_file, 'r') as f:
         reader = csv.reader(f)
-        parsed = [["Channel", "SDC/SE", "Frozen/SHA","dnl_min", "dnl_max", "inl_min", "inl_max", "inl_mean"]]
+        parsed = [["Channel", "FrontEnd", "Frozen/SHA","dnl_min", "dnl_max", "inl_min", "inl_max", "inl_mean"]]
         for r in reader:
             r_p = []
             if r[1] == "dnl_mins":
                 path = r[0]
-                ch_i = path.find("ch")+2
-                ch, i = int_parser(path[ch_i:])
-                adc0ch, adc1ch = None, None
-                if ch < 8:
-                    adc0ch = ch
-                else:
-                    adc1ch = ch
-                if len(path) > (ch_i+i) and path[ch_i+i] == "_":
-                    ch, i = int_parser(path[ch_i+i+1:])
-                    if ch < 8:
-                        adc0ch = ch
-                    else:
-                        adc1ch = ch
+                adc0ch, adc1ch, misc = find_chs(path)
                 no_cal = "NoCal" in r[0]
             else:
-                if no_cal:
+                if exam_no_cal != no_cal:
                     continue
+                if adc0ch is not None and adc0ch < 7 and misc is None: # filtering out v1s
+                    pass
                 header = r[0]
                 if "ADC0" in header:
                     if adc0ch is not None:
@@ -204,17 +188,23 @@ def parser(linearity_file):
                         r_p.append(adc1ch)
                     else:
                         continue
-                if "SDC" in header:
-                    r_p.append("SDC")
+                if "DB" in header:
+                    if "DBypass" in header:
+                        r_p.append("DBypass")
+                    else:
+                        r_p.append("DB")
                 else:
-                    r_p.append("SE")
+                    if "SDC" in header:
+                        r_p.append("SDC")
+                    else:
+                        r_p.append("SE")
                 if "FrozenSHA" in header:
                     r_p.append("FrozenSHA")
                 else:
                     r_p.append("SHA")
                 for i in range(1,5):
                     extremas = [float(s) for s in r[i][1:-1].split(',')]
-                    r_p.append(extremas[0]) #which EXTREMA value to use
+                    r_p.append(extremas[extrema_i]) #which EXTREMA value to use
                 r_p.append(float(r[5]))
                 parsed.append(r_p)
 
@@ -223,86 +213,6 @@ def parser(linearity_file):
         writer.writerows(parsed)
     return parsed
 
-def all_stats(parsed, per_channel):
-    if per_channel:
-        sorted_r = sorted(parsed[1:], key=lambda x: x[0:3])
-        ch, sha = 0, "FrozenSHA"
-    else:
-        sorted_r = sorted(parsed[1:], key=lambda x: x[1:3])
-        ch, sha = None, "FrozenSHA"
-
-    avgs = [[]]
-    samples = []
-    for r in sorted_r:
-        if r[2] != sha:
-            sha = r[2]
-            samples = [list(s) for s in zip(*samples)]
-            avgs[-1].append([statistics.mean(s) for s in samples])
-            samples = []
-        if ch is not None and r[0]!= ch:
-            ch = r[0]
-            avgs.append([])
-        samples.append(r[3:7])
-    samples = [list(s) for s in zip(*samples)]
-    avgs[-1].append([statistics.mean(s) for s in samples])
-
-    """ need to deal with missing channels when it happens
-    for i in range(16):
-        if not avgs[i]:
-            avgs[i] = [[0,0,0,0] for _ in range(4)]
-    """
-    avgs = np.array(avgs).transpose(1,2,0)
-    return [avgs, ["SDC-FrozenSHA", "SDC-SHA", "SE-FrozenSHA", "SE-SHA"]]
-
-def SDC_stats(parsed, per_channel):
-    if per_channel:
-        sorted_r = sorted(parsed[1:], key=lambda x: x[0:2])
-        ch, sdc = 0, "SDC"
-    else:
-        sorted_r = sorted(parsed[1:], key=lambda x: x[1])
-        ch, sdc = None, "SDC"
-    avgs = [[]]
-    samples = []
-    for r in sorted_r:
-        if r[1] != sdc:
-            sdc = r[1]
-            samples = [list(s) for s in zip(*samples)]
-            avgs[-1].append([statistics.mean(s) for s in samples])
-            samples = []
-        if ch is not None and r[0]!= ch:
-            ch = r[0]
-            avgs.append([])
-        samples.append(r[3:7])
-    samples = [list(s) for s in zip(*samples)]
-    avgs[-1].append([statistics.mean(s) for s in samples])
-
-    avgs = np.array(avgs).transpose(1,2,0)
-    return [avgs, ["SDC", "SE"]]
-
-def SHA_stats(parsed, per_channel):
-    if per_channel:
-        sorted_r = sorted(parsed[1:], key=lambda x: (x[0], x[2]))
-        ch, sha = 0, "FrozenSHA"
-    else:
-        sorted_r = sorted(parsed[1:], key=lambda x: x[2])
-        ch, sha = None, "FrozenSHA"
-    avgs = [[]]
-    samples = []
-    for r in sorted_r:
-        if r[2] != sha:
-            sha = r[2]
-            samples = [list(s) for s in zip(*samples)]
-            avgs[-1].append([statistics.mean(s) for s in samples])
-            samples = []
-        if ch is not None and r[0]!= ch:
-            ch = r[0]
-            avgs.append([])
-        samples.append(r[3:7])
-    samples = [list(s) for s in zip(*samples)]
-    avgs[-1].append([statistics.mean(s) for s in samples])
-
-    avgs = np.array(avgs).transpose(1,2,0)
-    return [avgs, ["FrozenSHA", "SHA"]]
 
 def grapher(data, labels, per_channel):
     """Makes DNL, INL extrema bar graphs. (should edit titles and axis labels as appropriate)
@@ -316,50 +226,65 @@ def grapher(data, labels, per_channel):
             height = rect.get_height()
             ax.annotate('{0:.2f}'.format(height),
                         xy=(rect.get_x() + rect.get_width() / 2, height),
-                        xytext=(0, 3 if height>0 else -10),  # 3 points vertical offset
-                        size=6,
+                        xytext=(0, 3 if height>0 else -18),  # 3 points vertical offset
+                        size=8,
                         textcoords="offset points",
                         ha='center', va='bottom')
     x = np.arange(len(data[0][0]))
-    width = 0.1
+    width = 0.2
     offset = len(labels)/2
 
     fig, ax = plt.subplots()
-    title = '(Averaged) Extrema DNL (12 bit)'
-    ax.set_title(title)
-    ax.set_ylabel(title)
+    title = "Extrema DNL (12 bit)" 
+    #ax.set_title(title, fontsize = 40)
+    ax.set_ylabel(title, fontsize = 25)
     for i, lab in enumerate(labels):
         autolabel(ax.bar(x+(i-offset)*width, data[i][1], width, label=lab))
     for i, lab in enumerate(labels):
         autolabel(ax.bar(x+(i-offset)*width, data[i][0], width, label=lab))
+    if not per_channel:
+        for i, lab in enumerate(labels):
+            ax.errorbar(x+(i-offset)*width, data[i][1], yerr=data[i][6], ecolor='black', fmt='none')
+            ax.errorbar(x+(i-offset)*width, data[i][0], yerr=data[i][5], ecolor='black', fmt='none')
     if per_channel:
-        ax.set_xlabel('Channel')
+        ax.set_xlabel('ADC Channel #', fontsize = 25)
         ax.set_xticks(x)
+        #ax.set_ylim(-.8, 0.8)
+        ax.tick_params(axis = 'both', which = 'major', labelsize = 15)
         ax.legend(bbox_to_anchor=(1.1, 1.05))
     else:
-        ax.set_xlabel('(Aggregated over all channels)')
+        ax.set_xlabel('(Averaged over all channels)')
         #ax.set_xticks([])
         plt.xticks(x, ["Warm", "Cold"])
         ax.legend(bbox_to_anchor=(.9, .9))
 
     fig, ax = plt.subplots()
-    title = '(Averaged) Extrema INL (12 bit)'
-    ax.set_title(title)
-    ax.set_ylabel(title)
+    title = "Extrema INL (12 bit)" 
+    #ax.set_title(title, fontsize = 40)
+    ax.set_ylabel(title, fontsize = 25)
+    #ax.set_ylabel("|Extrema_1-Extrema_5|/Extrema_5")
     for i, lab in enumerate(labels):
+        #autolabel(ax.bar(x+(i-offset)*width, data[i][3], width, label=lab, color='b'))
         autolabel(ax.bar(x+(i-offset)*width, data[i][3], width, label=lab))
     for i, lab in enumerate(labels):
         autolabel(ax.bar(x+(i-offset)*width, data[i][2], width, label=lab))
+    if not per_channel:
+        for i, lab in enumerate(labels):
+            ax.errorbar(x+(i-offset)*width, data[i][3], yerr=data[i][8], ecolor='black', fmt='none')
+            ax.errorbar(x+(i-offset)*width, data[i][2], yerr=data[i][7], ecolor='black', fmt='none')
     if per_channel:
-        ax.set_xlabel('Channel')
+        ax.set_xlabel('ADC Channel #', fontsize = 25)
         ax.set_xticks(x)
+        #ax.set_ylim(-2.5, 2.5)
+        ax.tick_params(axis = 'both', which = 'major', labelsize = 15)
         ax.legend(bbox_to_anchor=(1.1, 1.05))
     else:
-        ax.set_xlabel('(Aggregated over all channels)')
-        #ax.set_xticks([])
-        plt.xticks(x, ["Warm", "Cold"])
+        ax.set_xlabel('(Averaged over all channels)')
+        ax.set_xticks([])
+        #plt.xticks(x, ["Warm", "Cold"])
         ax.legend(bbox_to_anchor=(.9, .9))
 
+    #plt.gcf().savefig('inl.png', dpi=500)
     plt.show()
 
 linearity_statistics = lambda lin_file, stats, per_channel: grapher(*(stats(parser(lin_file), per_channel)+[per_channel]))
@@ -377,12 +302,36 @@ def compare(warm, cold, stats, per_channel):
         combined = np.array([warm_data, cold_data]).transpose(1,2,0,3).squeeze()
         grapher(combined, warm_label, per_channel)
         
-
-
-#process_graph_multi("data_ethlu/cold")
-#print(process("data_ethlu/ch3_11/Sinusoid_20KHz_SE-SHA-ADC0_NomVREFPN_2M_v2.txt", "./"))
-
+""" Analysis Notebook"""
 WARM = "data_ethlu/warm/analysis/linearity_analysis_trunc_limit.csv"
-COLD = "data_ethlu/cold/analysis/linearity_analysis.csv"
-#linearity_statistics(COLD, SHA_stats, False)
-compare(WARM, COLD, all_stats, True)
+WARM2 = "data_ethlu/warm_2/analysis/linearity_analysis.csv"
+WARMDIFF = "data_ethlu/warm_diff/analysis/linearity_analysis.csv"
+COLDDIFF = "data_ethlu/cold_diff/analysis/linearity_analysis.csv"
+COLD = "data_ethlu/cold/analysis/linearity_analysis_red.csv"
+TEMP = "linearity_analysis.csv"
+if __name__=="__main__":
+    #process_multi("data_ethlu/cold_diff")
+    #print(process("data_ethlu/ch3_11/Sinusoid_20KHz_SE-SHA-ADC0_NomVREFPN_2M_v2.txt", "./"))
+
+    #linearity_statistics(WARMDIFF, all_stats_db, False)
+    #compare(WARM, COLD, all_stats, False)
+
+    """Comparing extremas
+    stats = all_stats
+    extrema1_data, label = stats(parser(COLD, 0), False)
+    extrema5_data, _ = stats(parser(COLD, 1), False)
+    diff_c = np.absolute(extrema1_data - extrema5_data)/extrema5_data
+    COLD=WARM
+    extrema1_data, label = stats(parser(COLD, 0), False)
+    extrema5_data, _ = stats(parser(COLD, 1), False)
+    diff_w = np.absolute(extrema1_data - extrema5_data)/extrema5_data
+    combined = np.array([diff_w, diff_c]).transpose(1,2,0,3).squeeze()
+    grapher(combined, label, False)
+    #diff = extrema1_data - extrema5_data
+    #grapher(diff, label, True)
+
+    """
+    #se_sha = all_stats(parser(COLD), True)[0][3:]
+    #grapher(se_sha, [""], True) 
+
+

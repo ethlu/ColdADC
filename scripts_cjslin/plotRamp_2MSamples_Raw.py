@@ -1,18 +1,9 @@
 #!/usr/bin/env python3
-
 import time
 import binascii
 import sys, os
-import RPi.GPIO as GPIO
-import spidev
-import serial
-import readADC
-import readCtrlReg
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-from matplotlib import style
-from scipy.optimize import curve_fit
-import numpy as np
+
+ADC0Num=7
 
 def getChADCVal(ADC_Data,chnum):
     adcArray=[]
@@ -50,26 +41,99 @@ def printADCdata(iData):
               " (",bin(iData[iCnt])[2:].zfill(16),")","(",iData[iCnt],")")
     return()
 
-ADC0Num=5
 
-def extract_raw(temp_file, channels):
+def deSerialize(iBlock):
+    adcOut=[0]*(int((len(iBlock)/2)))
+
+    chNum=0
+    iBit=3
+    for iWord in iBlock : 
+        adcOut[chNum] += ( ((iWord&0x80)>>7<<(iBit)) | ((iWord&0x40)>>6<<(iBit+4)) | 
+                         ((iWord&0x20)>>5<<(iBit+8)) |  ((iWord&0x10)>>4<<(iBit+12)) )
+        adcOut[chNum+8] += ( ((iWord&0x8)>>3<<(iBit)) | ((iWord&0x4)>>2<<(iBit+4)) | 
+                           ((iWord&0x2)>>1<<(iBit+8)) |  ((iWord&0x1)<<(iBit+12)) )
+        iBit -= 1
+        if iBit < 0 :
+            iBit=3
+            chNum += 1
+            if ( (chNum>7) and (chNum%8 == 0) ):
+                chNum += 8
+    return(adcOut)
+
+def convert_raw(temp_file, channels, save = True):
+    print("Input file name : ", temp_file)
     with open(temp_file, "r") as rawFile:
         firstBlock = [int(v) for v in rawFile]
-    deSerialData = readADC.deSerialize(firstBlock)
+    deSerialData = deSerialize(firstBlock)
+    data = []
     for ch in channels:
         ChNum = (ADC0Num+ch%8)%8 + 8*(ch//8)
         iadcVal = getChADCVal(deSerialData,ChNum)
+        data.append(iadcVal)
+        if save:
+            with open("ch{}_converted.txt".format(ch),"a") as outFile:
+                for jx in range (0,len(iadcVal)):
+                    iLine=str(iadcVal[jx])+"\n"
+                    outFile.write(iLine)
+    return data
 
-        with open("ch{}_{}".format(ch, temp_file),"a") as outFile:
-            for jx in range (0,len(iadcVal)):
-                #iLine=str(x0[ix])+","+str(iadcVal[jx])+"\n"
-                iLine=str(iadcVal[jx])+"\n"
-                outFile.write(iLine)
-#extract_raw("temp_2M_raw.txt", [0, 8])
+def find_chs(path):
+    int_parser = lambda s: (int(s[0:2]), 2) if len(s)>1 and s[1].isdigit() else (int(s[0]), 1)
+    ch_i = path.find("ch")+2
+    ch, i = int_parser(path[ch_i:])
+    adc0ch, adc1ch = None, None
+    if ch < 8:
+        adc0ch = ch
+    else:
+        adc1ch = ch
+    if len(path) > (ch_i+i) and path[ch_i+i] == "_" and path[ch_i+i+1] != "v":
+        ch, i = int_parser(path[ch_i+i+1:])
+        if ch < 8:
+            adc0ch = ch
+        else:
+            adc1ch = ch
+    return adc0ch, adc1ch
+
+def convert_multi(inDir, outDir = "raw_converted"):
+    for root, dirs, files in os.walk(inDir):
+        convert_dir = outDir+root[len(inDir):]+"/"
+        try:
+            os.mkdir(convert_dir)
+        except Exception:
+            continue
+        if not files or files[0].find("Sinusoid") == -1:
+            continue
+        channels = [x for x in find_chs(root) if x is not None]
+        for inFile in files:
+            #if (inFile[:inFile.rindex("/")].find("v2") == -1): 
+                #continue
+            data = convert_raw(root+'/'+inFile, channels, False)
+            for iadcVal, ch in zip(data, channels):
+                if ch < 8:
+                    adc = "ADC0"
+                else:
+                    adc = "ADC1"
+                with open(convert_dir+adc+"_"+inFile, "a") as outFile:
+                    for jx in range (0,len(iadcVal)):
+                        iLine=str(iadcVal[jx])+"\n"
+                        outFile.write(iLine)
+convert_multi("/mnt/ethan/warm_diff", "warm_diff_converted")
+#extract_raw("warm_2/ch0_8/Sinusoid_20KHz_SE-SHA_NomVREFPN_2M_v1.txt", [0, 8])
 
 
 
-if __name__ == '__main__':
+if __name__ != '__main__':
+    import readADC
+
+    import RPi.GPIO as GPIO
+    import spidev
+    import serial
+    import readCtrlReg
+    import matplotlib.pyplot as plt
+    import matplotlib.animation as animation
+    from matplotlib import style
+    from scipy.optimize import curve_fit
+    import numpy as np
 
 #    if (len(sys.argv) != 3):
 #        print("\readADC.py requires 2 arguments: address (int) and value (int,0x,0b)")

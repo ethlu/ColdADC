@@ -56,6 +56,7 @@ def sine_fit(x0, y0, plot=False):
 
     #guess_freq = 147460.0 * (2.0*np.pi)   # ADC only FFT
     guess_freq = 20507.8 * (2.0*np.pi)     # Single Channel Full-Chain FFT
+    #guess_freq = 10507.8 * (2.0*np.pi)     # Single Channel Full-Chain FFT
 
     guess_amplitude = (y0.max()-y0.min())/2.0
     guess_phase = 0
@@ -79,6 +80,7 @@ def sine_fit(x0, y0, plot=False):
         # residual (data - fit)
         residual = y0 - data_fit
         #print("Max, min residuals = ",residual.max(),residual.min())
+        print(fit[0])
 
         residual_min, residual_max = [], []
         residual_mins = np.sort(residual[np.argpartition(residual, MAX_E)[:MAX_E]])
@@ -149,8 +151,8 @@ def sine_fit(x0, y0, plot=False):
     #fft.AnalyzeDynamicADCTest(y0)
     return [residual_min, residual_max]
 
-#process("data_ethlu/ch3_11/Sinusoid_20KHz_SE-SHA-ADC0_NomVREFPN_2M_v2.txt")
-process("data_ethlu/ch3_11/Sinusoid_20KHz_SDC-SHA-ADC0_NomVREFPN_2M_v2.txt", plot=True)
+#process("data_ethlu/warm/ch3_11/Sinusoid_20KHz_SE-SHA-ADC0_NomVREFPN_2M_v2.txt")
+process("data_ethlu/warm_diff/ch0/ADC0_Sinusoid_20KHz_DBypass-FrozenSHA_NomVREFPN_2M_v2.txt", plot=True)
 
 #print(process("data_ethlu/ch0_8/Sinusoid_20KHz_SE-SHA-ADC1_NomVREFPN_2M_v1.txt", 100)[0])
 #print(process("data_ethlu/ch1_9/v1/Sinusoid_20Khz_SDC-SHA-ADC0_NomVREFPN_2M_v1.txt", 100)[0])
@@ -196,7 +198,7 @@ def parser(sine_fit_file):
                     r_p.append("SHA")
                 for i in range(1,3):
                     extremas = [float(s) for s in r[i][1:-1].split(',')]
-                    r_p.append(extremas[0])
+                    r_p.append(extremas[1])
                 parsed.append(r_p)
 
     """
@@ -278,3 +280,5 @@ if __name__!="__main__":
                 except Exception:
                     print("bad inDir", inDir.path)
 #sine_fit_statistics('data_ethlu/analysis/sine_fit_analysis.csv')
+#print(process("data_ethlu/warm_2/ch2_10/ADC0_Sinusoid_20KHz_SDC-FrozenSHA_NomVREFPN_2M_v2.txt", plot=True))
+print(process("data_ethlu/warm/ch1_9/v1/Sinusoid_20KHz_SDC-SHA-ADC1_NomVREFPN_2M_v2.txt", plot=True))
