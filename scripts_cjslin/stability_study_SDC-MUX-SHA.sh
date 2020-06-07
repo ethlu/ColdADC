@@ -3,7 +3,9 @@
 # WARNING: 
 # THIS SCRIPT IS NOW CONFIGURED FOR READING ONE CHANNEL FULL CHAIN
 
-
+ADC0Ch=0
+ADC1Ch=0
+FrozenSHAWord=$(((ADC1Ch<<5)+(ADC0Ch<<2)+3))
 for j in 1p20; do
 
     #################################
@@ -18,7 +20,7 @@ for j in 1p20; do
     # SE -> Frozen SHA configuration
     cd /home/dayabay/ColdADC/scripts_cjslin/
     ./writeCtrlReg.py 0 0x63
-    ./writeCtrlReg.py 1 0x4b
+    ./writeCtrlReg.py 1 $FrozenSHAWord
     ./writeCtrlReg.py 4 0x3b
     ./writeCtrlReg.py 9 0b1000
     #Default SHA Bias current to 50uA (for SE SHA)
@@ -67,7 +69,7 @@ for j in 1p20; do
     # SE -> Frozen SHA configuration
     cd /home/dayabay/ColdADC/scripts_cjslin/
     ./writeCtrlReg.py 0 0x63
-    ./writeCtrlReg.py 1 0x4b
+    ./writeCtrlReg.py 1 $FrozenSHAWord
     ./writeCtrlReg.py 4 0x3b
     ./writeCtrlReg.py 9 0b1000
     #Default SHA Bias current to 50uA (for SE SHA)
@@ -202,7 +204,7 @@ for j in 1p20; do
     # SE -> SDC -> Frozen SHA ->ADC configuration
     cd /home/dayabay/ColdADC/scripts_cjslin/
     ./writeCtrlReg.py 0 0x62
-    ./writeCtrlReg.py 1 0x4b
+    ./writeCtrlReg.py 1 $FrozenSHAWord
     ./writeCtrlReg.py 4 0x33
     ./writeCtrlReg.py 9 0b1000
     #Default SHA Bias current to 50uA (for SE SHA)
@@ -247,7 +249,7 @@ for j in 1p20; do
     # SE -> SDC -> Frozen SHA ->ADC configuration
     cd /home/dayabay/ColdADC/scripts_cjslin/
     ./writeCtrlReg.py 0 0x62
-    ./writeCtrlReg.py 1 0x4b
+    ./writeCtrlReg.py 1 $FrozenSHAWord
     ./writeCtrlReg.py 4 0x33
     ./writeCtrlReg.py 9 0b1000
     #Default SHA Bias current to 50uA (for SE SHA)

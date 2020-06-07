@@ -2,7 +2,7 @@
 
 import time
 import binascii
-import sys
+import sys, os
 import RPi.GPIO as GPIO
 import spidev
 import serial
@@ -65,7 +65,12 @@ if __name__ == '__main__':
 
     channels = []
     for i in range(1, len(sys.argv)):
-        channels.append(int(sys.argv[i]))
+        ch = int(sys.argv[i])
+        channels.append(ch)
+        temp_file = "temp_2M_{}.txt".format(ch)
+        if os.path.exists(temp_file):
+            print("{} exists, moving it to old_{}".format(temp_file, temp_file))
+            os.rename(temp_file, "old_"+temp_file) 
 
     ser = serial.Serial(
                 port='/dev/serial0',
@@ -84,7 +89,7 @@ if __name__ == '__main__':
     #Configure spi0
     spi0 = spidev.SpiDev()
     spi0.open(0,0)
-    spi0.max_speed_hz = 1000000
+    spi0.max_speed_hz = 8000000
     #mode [CPOL][CPHA]: 0b01=latch on trailing edge of clock
     spi0.mode = 0b01
     
@@ -129,7 +134,7 @@ if __name__ == '__main__':
     NWORDFIFO=65536
 
     #ColdADC synchronization. Find ADC channel 0
-    ADC0Num=5
+    ADC0Num=6
     #ADC0Num=readADC.findADCch0(GPIO,spi0,ser,FPGA_FIFO_FULL,NWORDFIFO)
     #print("ADC0 Channel 0 = ",ADC0Num)
 

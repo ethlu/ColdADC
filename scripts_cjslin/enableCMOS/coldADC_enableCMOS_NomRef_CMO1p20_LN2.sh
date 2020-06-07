@@ -8,10 +8,10 @@
 
 ## FOR Board # 1 with LDO at VDDA=2.50V
 ## nominal CMOS references
-./coldADC_writeCtrlReg.py 24 0xd0
+./coldADC_writeCtrlReg.py 24 0xd1
 ./coldADC_writeCtrlReg.py 25 0x2f
-./coldADC_writeCtrlReg.py 26 0x7f
-./coldADC_writeCtrlReg.py 27 0x5f
+./coldADC_writeCtrlReg.py 26 0x80
+./coldADC_writeCtrlReg.py 27 0x60
 
 
 ## FOR VDDA=2.50V ; nominal CMOS references

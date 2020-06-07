@@ -306,7 +306,7 @@ if __name__ == '__main__':
     #Configure spi0
     spi0 = spidev.SpiDev()
     spi0.open(0,0)
-    spi0.max_speed_hz = 1000000
+    spi0.max_speed_hz = 8000000
     #mode [CPOL][CPHA]: 0b01=latch on trailing edge of clock
     spi0.mode = 0b01
     

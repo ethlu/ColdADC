@@ -131,6 +131,16 @@ def printADCdata(iData):
               " (",bin(iData[iCnt])[2:].zfill(16),")","(",iData[iCnt],")")
     return()
 
+def checkADCdata(iData):
+    for iCnt in range (0,len(iData)):
+        if iCnt%16<8 and iData[iCnt] != 0xabcd:
+            print("failed")
+            return False
+        if iCnt%16>=8 and iData[iCnt] != 0x1234:
+            print("failed")
+            return False
+    print("success")
+
 def printFPGAfifo(iData):
     for iCnt in range (0,len(iData)):
         if ((iCnt%32) == 0 ):
@@ -150,18 +160,23 @@ def main(GPort,SPI,SERIAL0,FIFO,NWORD):
     #print(adcData)
 
     #Poll FPGA FIFO state
+    t0 = time.time()
     pollFIFO(GPort,FIFO)
 
     ##########################################################################
     #Reading out ColdADC FIFO data
     ##########################################################################
     adcDataBlock=SPI.readbytes(NWORD)
+    t1 = time.time()
 
     firstBlock=adcDataBlock[0:NWORD]
     #printFPGAfifo(firstBlock)
 
     #Deserialize ADC data
     deSerData = deSerialize(firstBlock)      
+    t2 = time.time()
+    #print("time to read:", t1-t0)
+    #print("time to process:", t2-t1)
 
     return(deSerData)
 
@@ -194,7 +209,8 @@ if __name__ == '__main__':
     #Configure spi0
     spi0 = spidev.SpiDev()
     spi0.open(0,0)
-    spi0.max_speed_hz = 1000000
+    spi0.max_speed_hz = 8000000
+    #spi0.max_speed_hz = 100000
     #mode [CPOL][CPHA]: 0b01=latch on trailing edge of clock
     spi0.mode = 0b01
     
@@ -229,7 +245,7 @@ if __name__ == '__main__':
     NWORDFIFO=65536
 
     ###ColdADC synchronization. Find ADC channel 0
-    ADC0Num=5
+    ADC0Num=6
     #ADC0Num=findADCch0(GPIO,spi0,ser,FPGA_FIFO_FULL,NWORDFIFO)
     #print("ADC0 Channel 0 = ",ADC0Num)
 
